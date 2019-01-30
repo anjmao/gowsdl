@@ -13,8 +13,8 @@ var opsTmpl = `
 		{{range .Operations}}
 			{{$faults := len .Faults}}
 			{{$soapAction := findSOAPAction .Name $privateType}}
-			{{$requestType := findType .Input.Message | replaceReservedWords | makePublic}}
-			{{$responseType := findType .Output.Message | replaceReservedWords | makePublic}}
+			{{$requestType := .Input.TypeName | replaceReservedWords | makePublic}}
+			{{$responseType := .Output.TypeName | replaceReservedWords | makePublic}}
 
 			{{/*if ne $soapAction ""*/}}
 			{{if gt $faults 0}}
@@ -22,7 +22,7 @@ var opsTmpl = `
 			// {{range .Faults}}
 			//   - {{.Name}} {{.Doc}}{{end}}{{end}}
 			{{if ne .Doc ""}}/* {{.Doc}} */{{end}}
-			{{makePublic .Name | replaceReservedWords}} ({{if ne $requestType ""}}request *{{$requestType}}{{end}}) (*{{$responseType}}, error)
+			{{makePublic .UniqueName | replaceReservedWords}} ({{if ne $requestType ""}}request *{{$requestType}}{{end}}) (*{{$responseType}}, error)
 			{{/*end*/}}
 		{{end}}
 	}
@@ -38,10 +38,10 @@ var opsTmpl = `
 	}
 
 	{{range .Operations}}
-		{{$requestType := findType .Input.Message | replaceReservedWords | makePublic}}
+		{{$requestType := .Input.TypeName | replaceReservedWords | makePublic }}
 		{{$soapAction := findSOAPAction .Name $privateType}}
-		{{$responseType := findType .Output.Message | replaceReservedWords | makePublic}}
-		func (service *{{$privateType}}) {{makePublic .Name | replaceReservedWords}} ({{if ne $requestType ""}}request *{{$requestType}}{{end}}) (*{{$responseType}}, error) {
+		{{$responseType := .Output.TypeName | replaceReservedWords | makePublic}}
+		func (service *{{$privateType}}) {{makePublic .UniqueName | replaceReservedWords}} ({{if ne $requestType ""}}request *{{$requestType}}{{end}}) (*{{$responseType}}, error) {
 			response := new({{$responseType}})
 			err := service.client.Call("{{$soapAction}}", {{if ne $requestType ""}}request{{else}}nil{{end}}, response)
 			if err != nil {

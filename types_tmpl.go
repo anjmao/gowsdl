@@ -88,9 +88,10 @@ var typesTmpl = `
 	{{range .Elements}}
 		{{if not .Type}}
 			{{/* ComplexTypeLocal */}}
+			{{$nameUnique := .NameUnique}}
 			{{$name := .Name}}
 			{{with .ComplexType}}
-				type {{$name | replaceReservedWords | makePublic}} struct {
+				type {{$nameUnique | replaceReservedWords | makePublic}} struct {
 					XMLName xml.Name ` + "`xml:\"{{$targetNamespace}} {{$name}}\"`" + `
 					{{if ne .ComplexContent.Extension.Base ""}}
 						{{template "ComplexContent" .ComplexContent}}
@@ -114,7 +115,7 @@ var typesTmpl = `
 		type {{$name}} struct {
 			{{$typ := findNameByType .Name}}
 			{{if ne $name $typ}}
-				XMLName xml.Name ` + "`xml:\"{{$targetNamespace}} {{$typ}}\"`" + `
+				XMLName2 xml.Name ` + "`xml:\"{{$targetNamespace}} {{$typ}}\"`" + `
 			{{end}}
 			{{if ne .ComplexContent.Extension.Base ""}}
 				{{template "ComplexContent" .ComplexContent}}

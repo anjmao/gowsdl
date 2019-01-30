@@ -34,6 +34,18 @@ type GoWSDL struct {
 	wsdl                  *WSDL
 	resolvedXSDExternals  map[string]bool
 	currentRecursionLevel uint8
+	soapPkgPath           string
+	timePkgPath           string
+	timeType              string
+
+	opmux       sync.Mutex
+	seenOpNames map[string]struct{}
+
+	inputMux       sync.Mutex
+	seenInputNames map[string]struct{}
+
+	outputMux       sync.Mutex
+	seenOutputNames map[string]struct{}
 }
 
 var cacheDir = filepath.Join(os.TempDir(), "gowsdl-cache")
@@ -80,7 +92,7 @@ func downloadFile(url string, ignoreTLS bool) ([]byte, error) {
 }
 
 // NewGoWSDL initializes WSDL generator.
-func NewGoWSDL(file, pkg string, ignoreTLS bool, exportAllTypes bool) (*GoWSDL, error) {
+func NewGoWSDL(file, pkg string, ignoreTLS bool, exportAllTypes bool, soapPkgPath, timePkgPath, timeType string) (*GoWSDL, error) {
 	file = strings.TrimSpace(file)
 	if file == "" {
 		return nil, errors.New("WSDL file is required to generate Go proxy")
@@ -101,10 +113,16 @@ func NewGoWSDL(file, pkg string, ignoreTLS bool, exportAllTypes bool) (*GoWSDL, 
 	}
 
 	return &GoWSDL{
-		loc:          r,
-		pkg:          pkg,
-		ignoreTLS:    ignoreTLS,
-		makePublicFn: makePublicFn,
+		loc:             r,
+		pkg:             pkg,
+		ignoreTLS:       ignoreTLS,
+		makePublicFn:    makePublicFn,
+		soapPkgPath:     soapPkgPath,
+		timePkgPath:     timePkgPath,
+		timeType:        timeType,
+		seenOpNames:     make(map[string]struct{}),
+		seenInputNames:  make(map[string]struct{}),
+		seenOutputNames: make(map[string]struct{}),
 	}, nil
 }
 
@@ -123,8 +141,9 @@ func (g *GoWSDL) Start() (map[string][]byte, error) {
 		newTraverser(schema, g.wsdl.Types.Schemas).traverse()
 	}
 
-	var wg sync.WaitGroup
+	g.fixNameCollision()
 
+	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -188,6 +207,60 @@ func (g *GoWSDL) unmarshal() error {
 	}
 
 	return nil
+}
+
+func (g *GoWSDL) fixNameCollision() {
+	seenOps := map[string]struct{}{}
+	seenInputs := map[string]struct{}{}
+	seenOutputs := map[string]struct{}{}
+
+	for _, p := range g.wsdl.PortTypes {
+		for _, op := range p.Operations {
+			op.UniqueName = op.Name
+			if _, ok := seenOps[strings.ToLower(op.UniqueName)]; ok {
+				op.UniqueName = fmt.Sprintf("%sz", op.UniqueName)
+			}
+			op.Input.TypeName = g.findType(op.Input.Message)
+			op.Output.TypeName = g.findType(op.Output.Message)
+
+			if _, ok := seenInputs[strings.ToLower(op.Input.TypeName)]; ok {
+				op.Input.TypeName = fmt.Sprintf("%sz", op.Input.TypeName)
+			}
+			if _, ok := seenOutputs[strings.ToLower(op.Output.TypeName)]; ok {
+				op.Output.TypeName = fmt.Sprintf("%sz", op.Output.TypeName)
+			}
+			seenOps[strings.ToLower(op.Name)] = struct{}{}
+			seenInputs[strings.ToLower(op.Input.TypeName)] = struct{}{}
+			seenOutputs[strings.ToLower(op.Output.TypeName)] = struct{}{}
+
+			// fmt.Println("name", op.Input.Message, op.Output.Message)
+		}
+	}
+
+	seenNames := map[string]struct{}{}
+	for _, s := range g.wsdl.Types.Schemas {
+		for _, a := range s.ComplexTypes {
+			a.NameUnique = a.Name
+			if _, ok := seenNames[strings.ToLower(a.NameUnique)]; ok {
+				a.NameUnique = fmt.Sprintf("%sz", a.NameUnique)
+			}
+			seenNames[strings.ToLower(a.NameUnique)] = struct{}{}
+		}
+		for _, a := range s.Elements {
+			a.NameUnique = a.Name
+			if _, ok := seenNames[strings.ToLower(a.NameUnique)]; ok {
+				a.NameUnique = fmt.Sprintf("%sz", a.NameUnique)
+			}
+			seenNames[strings.ToLower(a.NameUnique)] = struct{}{}
+		}
+		for _, a := range s.SimpleType {
+			a.NameUnique = a.Name
+			if _, ok := seenNames[strings.ToLower(a.NameUnique)]; ok {
+				a.NameUnique = fmt.Sprintf("%sz", a.NameUnique)
+			}
+			seenNames[strings.ToLower(a.NameUnique)] = struct{}{}
+		}
+	}
 }
 
 func (g *GoWSDL) resolveXSDExternals(schema *XSDSchema, loc *Location) error {
@@ -256,7 +329,7 @@ func (g *GoWSDL) resolveXSDExternals(schema *XSDSchema, loc *Location) error {
 
 func (g *GoWSDL) genTypes() ([]byte, error) {
 	funcMap := template.FuncMap{
-		"toGoType":             toGoType,
+		"toGoType":             g.toGoType,
 		"stripns":              stripns,
 		"replaceReservedWords": replaceReservedWords,
 		"makePublic":           g.makePublicFn,
@@ -279,7 +352,7 @@ func (g *GoWSDL) genTypes() ([]byte, error) {
 
 func (g *GoWSDL) genOperations() ([]byte, error) {
 	funcMap := template.FuncMap{
-		"toGoType":             toGoType,
+		"toGoType":             g.toGoType,
 		"stripns":              stripns,
 		"replaceReservedWords": replaceReservedWords,
 		"makePublic":           g.makePublicFn,
@@ -299,9 +372,16 @@ func (g *GoWSDL) genOperations() ([]byte, error) {
 	return data.Bytes(), nil
 }
 
+type headerTmplData struct {
+	PackageName string
+	SoapPkgPath string
+	TimePkgPath string
+	TimeType    string
+}
+
 func (g *GoWSDL) genHeader() ([]byte, error) {
 	funcMap := template.FuncMap{
-		"toGoType":             toGoType,
+		"toGoType":             g.toGoType,
 		"stripns":              stripns,
 		"replaceReservedWords": replaceReservedWords,
 		"makePublic":           g.makePublicFn,
@@ -311,7 +391,13 @@ func (g *GoWSDL) genHeader() ([]byte, error) {
 
 	data := new(bytes.Buffer)
 	tmpl := template.Must(template.New("header").Funcs(funcMap).Parse(headerTmpl))
-	err := tmpl.Execute(data, g.pkg)
+	tmplData := &headerTmplData{
+		PackageName: g.pkg,
+		SoapPkgPath: g.soapPkgPath,
+		TimePkgPath: g.timePkgPath,
+		TimeType:    g.timeType,
+	}
+	err := tmpl.Execute(data, tmplData)
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +493,7 @@ func removeNS(xsdType string) string {
 	return r[0]
 }
 
-func toGoType(xsdType string) string {
+func (g *GoWSDL) toGoType(xsdType string) string {
 	// Handles name space, ie. xsd:string, xs:string
 	r := strings.Split(xsdType, ":")
 
@@ -418,6 +504,9 @@ func toGoType(xsdType string) string {
 	}
 
 	value := xsd2GoTypes[strings.ToLower(t)]
+	if value == "time.Time" {
+		value = g.timeType
+	}
 
 	if value != "" {
 		return value

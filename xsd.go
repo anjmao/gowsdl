@@ -124,8 +124,9 @@ type XSDImport struct {
 
 // XSDElement represents a Schema element.
 type XSDElement struct {
-	XMLName     xml.Name        `xml:"element"`
-	Name        string          `xml:"name,attr"`
+	XMLName     xml.Name `xml:"element"`
+	Name        string   `xml:"name,attr"`
+	NameUnique  string
 	Doc         string          `xml:"annotation>documentation"`
 	Nillable    bool            `xml:"nillable,attr"`
 	Type        string          `xml:"type,attr"`
@@ -139,9 +140,10 @@ type XSDElement struct {
 
 // XSDComplexType represents a Schema complex type.
 type XSDComplexType struct {
-	XMLName        xml.Name          `xml:"complexType"`
-	Abstract       bool              `xml:"abstract,attr"`
-	Name           string            `xml:"name,attr"`
+	XMLName        xml.Name `xml:"complexType"`
+	Abstract       bool     `xml:"abstract,attr"`
+	Name           string   `xml:"name,attr"`
+	NameUnique     string
 	Mixed          bool              `xml:"mixed,attr"`
 	Sequence       []*XSDElement     `xml:"sequence>element"`
 	Choice         []*XSDElement     `xml:"choice>element"`
@@ -199,7 +201,8 @@ type XSDAttribute struct {
 // XSDSimpleType element defines a simple type and specifies the constraints
 // and information about the values of attributes or text-only elements.
 type XSDSimpleType struct {
-	Name        string         `xml:"name,attr"`
+	Name        string `xml:"name,attr"`
+	NameUnique  string
 	Doc         string         `xml:"annotation>documentation"`
 	Restriction XSDRestriction `xml:"restriction"`
 	List        XSDList        `xml:"list"`

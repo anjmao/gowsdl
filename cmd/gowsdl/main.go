@@ -63,19 +63,22 @@ var Version string
 // Name is initialized in compilation time by go build.
 var Name string
 
-var vers = flag.Bool("v", false, "Shows gowsdl version")
-var pkg = flag.String("p", "myservice", "Package under which code will be generated")
-var outFile = flag.String("o", "myservice.go", "File where the generated code will be saved")
-var insecure = flag.Bool("i", false, "Skips TLS Verification")
-var makePublic = flag.Bool("make-public", true, "Make the generated types public/exported")
+var (
+	vers        = flag.Bool("v", false, "Shows gowsdl version")
+	pkg         = flag.String("p", "myservice", "Package under which code will be generated")
+	outFile     = flag.String("o", "myservice.go", "File where the generated code will be saved")
+	insecure    = flag.Bool("i", false, "Skips TLS Verification")
+	makePublic  = flag.Bool("make-public", true, "Make the generated types public/exported")
+	soapPkgPath = flag.String("soap-pkg-path", "github.com/hooklift/gowsdl/soap", "Set soap package import path")
+	timePkgPath = flag.String("time-pkg-path", "time.Time", "Set time package import path")
+	timeType    = flag.String("time-type", "time.Time", "Set time type for Date fields (e.g. soap.CustomDate)")
+)
 
-func init() {
+func main() {
 	log.SetFlags(0)
 	log.SetOutput(os.Stdout)
 	log.SetPrefix("🍀  ")
-}
 
-func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] myservice.wsdl\n", os.Args[0])
 		flag.PrintDefaults()
@@ -101,7 +104,8 @@ func main() {
 	}
 
 	// load wsdl
-	gowsdl, err := gen.NewGoWSDL(wsdlPath, *pkg, *insecure, *makePublic)
+	fmt.Println("pkg", *pkg)
+	gowsdl, err := gen.NewGoWSDL(wsdlPath, *pkg, *insecure, *makePublic, *soapPkgPath, *timePkgPath, *timeType)
 	if err != nil {
 		log.Fatalln(err)
 	}

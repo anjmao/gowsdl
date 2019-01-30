@@ -153,6 +153,7 @@ type WSDLInput struct {
 	Doc        string            `xml:"documentation"`
 	SOAPBody   WSDLSOAPBody      `xml:"http://schemas.xmlsoap.org/wsdl/soap/ body"`
 	SOAPHeader []*WSDLSOAPHeader `xml:"http://schemas.xmlsoap.org/wsdl/soap/ header"`
+	TypeName   string
 }
 
 // WSDLOutput represents a WSDL output message.
@@ -162,11 +163,13 @@ type WSDLOutput struct {
 	Doc        string            `xml:"documentation"`
 	SOAPBody   WSDLSOAPBody      `xml:"http://schemas.xmlsoap.org/wsdl/soap/ body"`
 	SOAPHeader []*WSDLSOAPHeader `xml:"http://schemas.xmlsoap.org/wsdl/soap/ header"`
+	TypeName   string
 }
 
 // WSDLOperation represents the contract of an entire operation or function.
 type WSDLOperation struct {
-	Name          string            `xml:"name,attr"`
+	Name          string `xml:"name,attr"`
+	UniqueName    string
 	Doc           string            `xml:"documentation"`
 	Input         WSDLInput         `xml:"input"`
 	Output        WSDLOutput        `xml:"output"`
